@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quote Task Manager</title>
+  <!-- Tailwind CSS CDN for styling -->
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-6">
+
+  <!-- === QUOTE BOX SECTION === -->
+  <div id="quote-box" class="bg-yellow-100 p-4 rounded-xl shadow mb-6 max-w-xl mx-auto text-center">
+    <p id="quote-text" class="text-xl font-semibold text-gray-800 mb-2">Loading quote...</p>
+    <p id="quote-author" class="text-gray-600 text-sm">—</p>
+    <button onclick="fetchQuote()" class="mt-3 bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600">
+      New Quote
+    </button>
+  </div>
+
+  <!-- === ADD TASK FORM SECTION === -->
+  <div class="max-w-xl mx-auto mb-6 bg-white p-4 rounded-xl shadow">
+    <h2 class="text-xl font-semibold mb-2">Add New Task</h2>
+    <form id="task-form" class="flex flex-col gap-3">
+      <input type="text" id="task-title" class="p-2 border rounded" placeholder="Task title" required />
+      <textarea id="task-description" class="p-2 border rounded" placeholder="Task description (optional)"></textarea>
+      <button type="submit" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">Add Task</button>
+    </form>
+  </div>
+
+  <!-- === TASK TABLE SECTION === -->
+  <div class="max-w-5xl mx-auto bg-white rounded-xl shadow p-4">
+    <h2 class="text-xl font-semibold mb-4">Tasks</h2>
+    <div class="overflow-y-auto max-h-[560px]">
+      <table class="min-w-full text-left border border-gray-200">
+        <thead class="bg-gray-200 sticky top-0 z-10">
+          <tr>
+            <th class="p-3 border">Title</th>
+            <th class="p-3 border">Description</th>
+            <th class="p-3 border whitespace-nowrap w-1">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="task-table-body"></tbody>
+      </table>
+    </div>
+
+    <!-- Pagination controls -->
+    <div class="flex justify-center items-center gap-4 mt-4" id="pagination">
+      <button id="prev-btn" class="px-3 py-1 rounded border bg-gray-200 hover:bg-gray-300">Prev</button>
+      <span id="page-indicator" class="text-gray-700 font-medium">Page 1</span>
+      <button id="next-btn" class="px-3 py-1 rounded border bg-gray-200 hover:bg-gray-300">Next</button>
+    </div>
+  </div>
+
+  <script>
+    const BASE_URL = "http://localhost/quote-task-manager/backend/";
+    let allTasks = [];
+    let currentPage = 1;
+    const rowsPerPage = 5;
+
+    async function fetchQuote() {
+      try {
+        const res = await fetch(BASE_URL + "quote.php");
+        const data = await res.json();
+        document.getElementById("quote-text").textContent = `"${data.text}"`;
+        document.getElementById("quote-author").textContent = `— ${data.author}`;
+      } catch (error) {
+        document.getElementById("quote-text").textContent = "Could not load quote.";
+        document.getElementById("quote-author").textContent = "";
+        console.error("Quote fetch error:", error);
+      }
+    }
+
+    async function getTasks() {
+      try {
+        const res = await fetch(BASE_URL + "read.php");
+        const data = await res.json();
+        allTasks = data.tasks || [];
+        currentPage = 1;
+        renderPage();
+      } catch (error) {
+        console.error("Fetch tasks error:", error);
+      }
+    }
+
+    function renderPage() {
+      const start = (currentPage - 1) * rowsPerPage;
+      const end = start + rowsPerPage;
+      const paginatedTasks = allTasks.slice(start, end);
+
+      const tbody = document.getElementById("task-table-body");
+      tbody.innerHTML = "";
+
+      paginatedTasks.forEach(task => {
+        const row = document.createElement("tr");
+        const desc = task.description?.trim() || "No description";
+        row.innerHTML = `
+          <td class="border p-2">
+            <input type="text" class="title-input w-full" value="${task.title}" />
+          </td>
+          <td class="border p-2">
+            <textarea class="desc-input w-full">${desc}</textarea>
+          </td>
+          <td class="border p-2 whitespace-nowrap">
+            <div class="flex flex-col sm:flex-row gap-2">
+              <button onclick="updateTask(${task.id}, this)"
+                class="px-3 py-1 rounded border border-blue-500 text-blue-500 hover:bg-blue-500 hover:text-white transition">
+                Update
+              </button>
+              <button onclick="deleteTask(${task.id})"
+                class="px-3 py-1 rounded border border-red-500 text-red-500 hover:bg-red-500 hover:text-white transition">
+                Delete
+              </button>
+            </div>
+          </td>
+        `;
+        tbody.appendChild(row);
+      });
+
+      document.getElementById("page-indicator").textContent = `Page ${currentPage}`;
+      document.getElementById("prev-btn").disabled = currentPage === 1;
+      document.getElementById("next-btn").disabled = end >= allTasks.length;
+    }
+
+    document.getElementById("prev-btn").addEventListener("click", () => {
+      if (currentPage > 1) {
+        currentPage--;
+        renderPage();
+      }
+    });
+
+    document.getElementById("next-btn").addEventListener("click", () => {
+      if ((currentPage * rowsPerPage) < allTasks.length) {
+        currentPage++;
+        renderPage();
+      }
+    });
+
+    async function createTask(title, description) {
+      const res = await fetch(BASE_URL + "create.php", {
+        method: "POST",
+        body: JSON.stringify({ title, description }),
+        headers: { "Content-Type": "application/json" }
+      });
+      const result = await res.json();
+      if (result.success) {
+        await getTasks();
+        document.getElementById("task-form").reset();
+      } else {
+        alert("Failed to create task: " + result.message);
+      }
+    }
+
+    async function deleteTask(id) {
+      const res = await fetch(BASE_URL + "delete.php", {
+        method: "DELETE",
+        body: JSON.stringify({ id }),
+        headers: { "Content-Type": "application/json" }
+      });
+      const result = await res.json();
+      if (result.success) {
+        await getTasks();
+      } else {
+        alert("Failed to delete task");
+      }
+    }
+
+    async function updateTask(id, button) {
+      const row = button.closest("tr");
+      const title = row.querySelector(".title-input").value.trim();
+      const description = row.querySelector(".desc-input").value.trim();
+
+      if (!title) {
+        alert("Title is required.");
+        return;
+      }
+
+      const res = await fetch(BASE_URL + "update.php", {
+        method: "PUT",
+        body: JSON.stringify({ id, title, description }),
+        headers: { "Content-Type": "application/json" }
+      });
+
+      const result = await res.json();
+      if (result.success) {
+        await getTasks();
+      } else {
+        alert("Failed to update task");
+      }
+    }
+
+    document.getElementById("task-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      const title = document.getElementById("task-title").value.trim();
+      const description = document.getElementById("task-description").value.trim();
+      if (title) {
+        createTask(title, description);
+      }
+    });
+
+    window.onload = () => {
+      fetchQuote();
+      getTasks();
+    };
+  </script>
+
+</body>
+</html>
